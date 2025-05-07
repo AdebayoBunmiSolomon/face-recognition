@@ -15,19 +15,22 @@ import { Worklets } from "react-native-worklets-core";
 const { width, height } = Dimensions.get("window");
 const CIRCLE_RADIUS = width * 0.4;
 
+type stepType = "DETECT_FACE" | "BLINK_BOTH_EYES" | "SMILE" | "SUCCESS";
+
 export default function App() {
-  const [faceDetectedInCircle, setFaceDetectedInCircle] = useState(false);
-  const [step, setStep] = useState(1); // Step 1: Face detected, Step 2: Blink left eye, Step 3: Blink right eye
-  const [blinkStatus, setBlinkStatus] = useState({
-    leftEye: false,
-    rightEye: false,
-  });
+  const [faceDetectedInCircle, setFaceDetectedInCircle] =
+    useState<boolean>(false);
+  const [step, setStep] = useState<stepType>("DETECT_FACE");
+  const lastActionTimeRef = useRef<number>(0); // For debouncing
+  const prevBothEyesClosedRef = useRef<boolean>(false); // Track if both eyes blinked
+  const prevUserSmileRef = useRef<boolean>(false); // Track if mouth was open
 
   const faceDetectionOptions = useRef<FaceDetectionOptions>({
     performanceMode: "fast",
     landmarkMode: "none",
-    classificationMode: "none",
+    classificationMode: "all", // For eye open and smiling probabilities
     contourMode: "none",
+    trackingEnabled: false,
   }).current;
 
   const device = useCameraDevice("front");
@@ -40,15 +43,13 @@ export default function App() {
     })();
   }, []);
 
-  // Define a threshold to consider an eye blinked
-  const BLINK_THRESHOLD = 0.3; // Probability below this value means eye is blinked
-
   const handleDetectedFaces = Worklets.createRunOnJS((faces: Face[]) => {
+    const now = Date.now();
+
     if (faces.length > 0) {
       const face = faces[0];
       const faceCenterX = face.bounds.x + face.bounds.width / 2;
       const faceCenterY = face.bounds.y + face.bounds.height / 2;
-
       const circleCenterX = width / 2;
       const circleCenterY = height / 2;
 
@@ -60,23 +61,55 @@ export default function App() {
       const isInsideCircle = distance < CIRCLE_RADIUS;
       setFaceDetectedInCircle(isInsideCircle);
 
-      // After face detection, proceed with blink detection
-      if (isInsideCircle) {
-        if (step === 1 && face.leftEyeOpenProbability < BLINK_THRESHOLD) {
-          // Blink left eye detected
-          setBlinkStatus((prev) => ({ ...prev, leftEye: true }));
-          setStep(2); // Move to right eye blink step
-        } else if (
-          step === 2 &&
-          face.rightEyeOpenProbability < BLINK_THRESHOLD
+      if (!isInsideCircle) {
+        // Face not in circle, reset
+        setStep("DETECT_FACE");
+        prevBothEyesClosedRef.current = false;
+        prevUserSmileRef.current = false;
+        return;
+      }
+
+      // Face is in circle, process steps
+      const leftEyeOpenProbability = face.leftEyeOpenProbability ?? 1.0;
+      const rightEyeOpenProbability = face.rightEyeOpenProbability ?? 1.0;
+      const smilingProbability = face.smilingProbability ?? 0.0;
+
+      // Thresholds
+      const CLOSED_THRESHOLD = 0.3; // Eyes closed if < 0.3
+      const SMILE_THRESHOLD = 0.7; // Mouth open if > 0.7
+      const DEBOUNCE_MS = 100; // Debounce period
+
+      if (step === "DETECT_FACE") {
+        // Face detected, move to blink step
+        setStep("BLINK_BOTH_EYES");
+      } else if (step === "BLINK_BOTH_EYES" && !prevBothEyesClosedRef.current) {
+        // Detect both eyes blink
+        if (
+          leftEyeOpenProbability < CLOSED_THRESHOLD &&
+          rightEyeOpenProbability < CLOSED_THRESHOLD &&
+          now - lastActionTimeRef.current > DEBOUNCE_MS
         ) {
-          // Blink right eye detected
-          setBlinkStatus((prev) => ({ ...prev, rightEye: true }));
-          setStep(3); // Move to face detected success step
+          prevBothEyesClosedRef.current = true;
+          setStep("SMILE");
+          lastActionTimeRef.current = now;
+        }
+      } else if (step === "SMILE" && !prevUserSmileRef.current) {
+        // Detect mouth open
+        if (
+          smilingProbability > SMILE_THRESHOLD &&
+          now - lastActionTimeRef.current > DEBOUNCE_MS
+        ) {
+          prevUserSmileRef.current = true;
+          setStep("SUCCESS");
+          lastActionTimeRef.current = now;
         }
       }
     } else {
+      // No face detected, reset
       setFaceDetectedInCircle(false);
+      setStep("DETECT_FACE");
+      prevBothEyesClosedRef.current = false;
+      prevUserSmileRef.current = false;
     }
   });
 
@@ -88,6 +121,25 @@ export default function App() {
     },
     [handleDetectedFaces]
   );
+
+  // Prompt messages
+  const getPromptMessage = () => {
+    if (!faceDetectedInCircle) {
+      return "Please position your face inside the circle";
+    }
+    switch (step) {
+      case "DETECT_FACE":
+        return "Please position your face inside the circle";
+      case "BLINK_BOTH_EYES":
+        return "Please blink both eyes";
+      case "SMILE":
+        return "Please smile";
+      case "SUCCESS":
+        return "Face detected successfully!";
+      default:
+        return "";
+    }
+  };
 
   return (
     <View style={{ flex: 1 }}>
@@ -105,37 +157,19 @@ export default function App() {
               <View style={styles.maskTop} />
               <View style={styles.middleRow}>
                 <View style={styles.maskSide} />
-                <View style={styles.circle} />
+                <View
+                  style={[
+                    styles.circle,
+                    { borderColor: faceDetectedInCircle ? "green" : "white" },
+                  ]}
+                />
                 <View style={styles.maskSide} />
               </View>
               <View style={styles.maskBottom} />
             </View>
 
-            {/* Prompt Messages */}
-            {!faceDetectedInCircle && (
-              <Text style={styles.promptText}>
-                Please position your face inside the circle
-              </Text>
-            )}
-
-            {faceDetectedInCircle && step === 1 && (
-              <Text style={styles.promptText}>Please blink your left eye</Text>
-            )}
-
-            {faceDetectedInCircle && step === 2 && !blinkStatus.leftEye && (
-              <Text style={styles.promptText}>
-                Left eye blink detected. Now, blink your right eye
-              </Text>
-            )}
-
-            {faceDetectedInCircle &&
-              step === 3 &&
-              blinkStatus.leftEye &&
-              !blinkStatus.rightEye && (
-                <Text style={styles.promptText}>
-                  Right eye blink detected. Face detected successfully!
-                </Text>
-              )}
+            {/* Prompt Message */}
+            <Text style={styles.promptText}>{getPromptMessage()}</Text>
           </View>
         </>
       ) : (
@@ -152,7 +186,7 @@ const styles = StyleSheet.create({
   },
   maskTop: {
     flex: 1,
-    backgroundColor: "white",
+    backgroundColor: "rgba(255, 255, 255, 0.7)",
   },
   middleRow: {
     height: CIRCLE_RADIUS * 2,
@@ -160,19 +194,18 @@ const styles = StyleSheet.create({
   },
   maskSide: {
     flex: 1,
-    backgroundColor: "white",
+    backgroundColor: "rgba(255, 255, 255, 0.7)",
   },
   circle: {
     width: CIRCLE_RADIUS * 2,
     height: CIRCLE_RADIUS * 2,
     borderRadius: CIRCLE_RADIUS,
     borderWidth: 3,
-    borderColor: "green",
     backgroundColor: "transparent",
   },
   maskBottom: {
     flex: 1,
-    backgroundColor: "white",
+    backgroundColor: "rgba(255, 255, 255, 0.7)",
   },
   promptText: {
     position: "absolute",

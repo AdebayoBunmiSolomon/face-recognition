@@ -39,7 +39,8 @@
       [
         "react-native-vision-camera",
         {
-          "cameraPermissionText": "We need your permission to use the camera"
+          "cameraPermissionText": "We need your permission to use the camera",
+          "enableFrameProcessors": true
         }
       ],
       [
