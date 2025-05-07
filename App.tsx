@@ -11,6 +11,7 @@ import {
   FaceDetectionOptions,
 } from "react-native-vision-camera-face-detector";
 import { Worklets } from "react-native-worklets-core";
+import * as Speech from "expo-speech";
 
 const { width, height } = Dimensions.get("window");
 const CIRCLE_RADIUS = width * 0.4;
@@ -24,6 +25,7 @@ export default function App() {
   const lastActionTimeRef = useRef<number>(0); // For debouncing
   const prevBothEyesClosedRef = useRef<boolean>(false); // Track if both eyes blinked
   const prevUserSmileRef = useRef<boolean>(false); // Track if mouth was open
+  const prevPromptRef = useRef<string>(""); // Track last spoken prompt
 
   const faceDetectionOptions = useRef<FaceDetectionOptions>({
     performanceMode: "fast",
@@ -42,6 +44,20 @@ export default function App() {
       console.log({ status });
     })();
   }, []);
+
+  // Trigger voice prompts based on step and face detection
+  useEffect(() => {
+    const prompt = getVoicePrompt();
+    if (prompt && prompt !== prevPromptRef.current) {
+      Speech.stop(); // Stop any ongoing speech
+      Speech.speak(prompt, {
+        language: "en-US",
+        pitch: 1.0,
+        rate: 0.8,
+      });
+      prevPromptRef.current = prompt;
+    }
+  }, [step, faceDetectedInCircle]);
 
   const handleDetectedFaces = Worklets.createRunOnJS((faces: Face[]) => {
     const now = Date.now();
@@ -122,7 +138,25 @@ export default function App() {
     [handleDetectedFaces]
   );
 
-  // Prompt messages
+  // Voice and visual prompt messages
+  const getVoicePrompt = () => {
+    if (!faceDetectedInCircle) {
+      return "Place your face in the circle";
+    }
+    switch (step) {
+      case "DETECT_FACE":
+        return "Place your face in the circle";
+      case "BLINK_BOTH_EYES":
+        return "Blink both eyes";
+      case "SMILE":
+        return "Smile";
+      case "SUCCESS":
+        return "Done";
+      default:
+        return "";
+    }
+  };
+
   const getPromptMessage = () => {
     if (!faceDetectedInCircle) {
       return "Please position your face inside the circle";
