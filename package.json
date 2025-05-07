@@ -1,0 +1,37 @@
+{
+  "name": "face-recognition",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web",
+    "prebuild:android": "npx expo prebuild --platform android --clean",
+    "prebuild:ios": "npx expo prebuild --platform ios",
+    "build:preview:android": "eas build --profile preview --platform android",
+    "build:dev:android": "eas build --profile development --platform android",
+    "build:prod:android": "eas build --profile production --platform android",
+    "build:prod:ios": "eas build --profile production --platform ios"
+  },
+  "dependencies": {
+    "@shopify/react-native-skia": "v2.0.0-next.2",
+    "expo": "~53.0.7",
+    "expo-status-bar": "~2.2.3",
+    "react": "19.0.0",
+    "react-native": "0.79.2",
+    "react-native-reanimated": "~3.17.4",
+    "react-native-vision-camera": "^4.6.4",
+    "react-native-vision-camera-face-detector": "^1.8.3",
+    "react-native-worklets-core": "^1.5.0",
+    "expo-system-ui": "~5.0.7",
+    "expo-dev-client": "~5.1.8",
+    "expo-build-properties": "~0.14.6"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.2",
+    "@types/react": "~19.0.10",
+    "typescript": "~5.8.3"
+  },
+  "private": true
+}
